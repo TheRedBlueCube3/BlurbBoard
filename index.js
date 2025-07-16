@@ -105,6 +105,14 @@ app.post("/api/users/register", enforceCooldown, async (req, res) => {
     }
 
     const userId = generateRandomId();
+
+    const idCheck = await pool.query("SELECT * FROM users WHERE id = $1", [
+      userId,
+    ]);
+    while (idCheck.rows.length > 0) {
+      userId = generateRandomId();
+      idCheck = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+    }
     const createdAt = new Date().toISOString();
 
     const saltRounds = 10;
@@ -264,6 +272,16 @@ app.post(
 
     try {
       const msgId = generateRandomId();
+
+      const idCheck = await pool.query("SELECT * FROM messages WHERE id = $1", [
+        msgId,
+      ]);
+      while (idCheck.rows.length > 0) {
+        msgId = generateRandomId();
+        idCheck = await pool.query("SELECT * FROM users WHERE id = $1", [
+          msgId,
+        ]);
+      }
       const timestamp = new Date().toISOString();
 
       await pool.query(
