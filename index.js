@@ -38,6 +38,26 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+const sanitizeContent = (req, res, next) => {
+  if (req.body.content) {
+    req.body.content = req.body.content
+      .normalize("NFKC")
+      .replace(/[\u202E\u202D\u202A-\u202C\u200E\u200F]/g, "")
+      .replace(
+        /[\u0300-\u036F\u0347\u035F\uFEFF\u200B-\u200F\u2060-\u206F]+/g,
+        ""
+      )
+      .replace(/[^\p{L}\p{N}\p{P}\p{S}\s]/gu, "");
+
+    if (!req.body.content.trim()) {
+      return res
+        .status(400)
+        .json({ error: "Message contains only invalid characters" });
+    }
+  }
+  next();
+};
+
 const lastRequestTimes = {};
 
 const enforceCooldown = (req, res, next) => {
@@ -54,6 +74,25 @@ const enforceCooldown = (req, res, next) => {
 };
 
 app.post("/api/users/register", enforceCooldown, async (req, res) => {
+  if (req.body.username) {
+    if (req.body.username.length > 20) {
+      return res.status(400).json({ error: "Your username is too long" });
+    }
+    req.body.username = req.body.username
+      .normalize("NFKC")
+      .replace(/[\u202E\u202D\u202A-\u202C\u200E\u200F]/g, "")
+      .replace(
+        /[\u0300-\u036F\u0347\u035F\uFEFF\u200B-\u200F\u2060-\u206F]+/g,
+        ""
+      )
+      .replace(/[^\p{L}\p{N}\p{P}\p{S}\s]/gu, "");
+
+    if (!req.body.username.trim()) {
+      return res
+        .status(400)
+        .json({ error: "Username contains only invalid characters" });
+    }
+  }
   const { username, password } = req.body;
 
   try {
@@ -210,35 +249,45 @@ app.get("/api/msgs", async (req, res) => {
   }
 });
 
-app.post("/api/msgs", enforceCooldown, authenticateToken, async (req, res) => {
-  const { content, parentId } = req.body;
-  const userId = req.user.id;
+app.post(
+  "/api/msgs",
+  enforceCooldown,
+  authenticateToken,
+  sanitizeContent,
+  async (req, res) => {
+    const { content, parentId } = req.body;
+    const userId = req.user.id;
 
-  try {
-    const msgId = generateRandomId();
-    const timestamp = new Date().toISOString();
+    if (content.length > 500) {
+      res.status(400).json({ error: "Your message is too long" });
+    }
 
-    await pool.query(
-      "INSERT INTO messages (id, content, timestamp, author, parent_id) VALUES ($1, $2, $3, $4, $5)",
-      [msgId, content, timestamp, userId, parentId]
-    );
+    try {
+      const msgId = generateRandomId();
+      const timestamp = new Date().toISOString();
 
-    res.status(201).json({
-      success: true,
-      message: {
-        id: msgId,
-        content,
-        timestamp,
-        authorId: req.user.id,
-        authorName: req.user.username,
-        parentId,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+      await pool.query(
+        "INSERT INTO messages (id, content, timestamp, author, parent_id) VALUES ($1, $2, $3, $4, $5)",
+        [msgId, content, timestamp, userId, parentId]
+      );
+
+      res.status(201).json({
+        success: true,
+        message: {
+          id: msgId,
+          content,
+          timestamp,
+          authorId: req.user.id,
+          authorName: req.user.username,
+          parentId,
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
-});
+);
 
 app.get("/api", (req, res) => {
   res.json({ message: "Hello from Express API!" });
