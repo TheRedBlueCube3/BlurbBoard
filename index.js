@@ -76,7 +76,9 @@ const enforceCooldown = (req, res, next) => {
 app.post("/api/users/register", enforceCooldown, async (req, res) => {
   if (req.body.username) {
     if (req.body.username.length > 20) {
-      return res.status(400).json({ error: "Your username is too long" });
+      return res.status(400).json({
+        error: "Your username is too long, the maximum is 20 characters",
+      });
     }
     req.body.username = req.body.username
       .normalize("NFKC")
@@ -267,7 +269,9 @@ app.post(
     const userId = req.user.id;
 
     if (content.length > 500) {
-      res.status(400).json({ error: "Your message is too long" });
+      return res.status(400).json({
+        error: "Your message is too long, the maximum is 500 characters",
+      });
     }
 
     try {
