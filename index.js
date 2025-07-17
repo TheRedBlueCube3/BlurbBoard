@@ -66,7 +66,9 @@ const enforceCooldown = (req, res, next) => {
   const cooldown = 5000;
 
   if (lastRequestTimes[userId] && now - lastRequestTimes[userId] < cooldown) {
-    return res.sendStatus(429);
+    return res
+      .status(429)
+      .json({ error: "Too fast! Cooldown time is 5 seconds." });
   }
 
   lastRequestTimes[userId] = now;
