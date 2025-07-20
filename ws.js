@@ -1,7 +1,6 @@
 require("dotenv").config();
 const WebSocket = require("ws");
 const { Pool } = require("pg");
-const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const http = require("http");
 const HEARTBEAT_INTERVAL = 30000;
@@ -71,15 +70,18 @@ const wss = new WebSocket.Server({ server });
 const clients = new Map();
 
 wss.on("connection", (ws, req) => {
-  console.log("New client connected");
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const ip = forwardedFor
+    ? forwardedFor.split(",")[0].trim() // Takes the first IP if multiple proxies
+    : req.socket.remoteAddress; // Fallback to direct connection IP
+  console.log(`Client connected! ${ip}`);
 
   ws.isAlive = true;
 
   ws.on("pong", () => {
     ws.isAlive = true;
-    console.log("Received pong from client");
+    console.log(`Received pong from client ${ip}`);
   });
-  const ip = req.socket.remoteAddress;
   let user = null;
 
   ws.on("message", async (message) => {
@@ -88,8 +90,6 @@ wss.on("connection", (ws, req) => {
 
       if (data.t === "hi") {
         try {
-          enforceCooldown(ip);
-
           if (!data.token) {
             throw new Error("Token is required");
           }
@@ -107,6 +107,16 @@ wss.on("connection", (ws, req) => {
               success: true,
             })
           );
+          wss.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(
+                JSON.stringify({
+                  t: "ucu",
+                  count: clients.size,
+                })
+              );
+            }
+          });
         } catch (err) {
           ws.send(
             JSON.stringify({
@@ -188,6 +198,7 @@ wss.on("connection", (ws, req) => {
               t: "post",
               success: false,
               error: err.message,
+              message: data.message,
             })
           );
         }
@@ -203,7 +214,18 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
+    console.log(`Client disconnected: ${ip}`);
     clients.delete(ws);
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(
+          JSON.stringify({
+            t: "ucu",
+            count: clients.size,
+          })
+        );
+      }
+    });
   });
 });
 

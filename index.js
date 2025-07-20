@@ -61,7 +61,7 @@ const sanitizeContent = (req, res, next) => {
 const lastRequestTimes = {};
 
 const enforceCooldown = (req, res, next) => {
-  const userId = req.ip;
+  const userId = req.headers["x-real-ip"];
   const now = Date.now();
   const cooldown = 5000;
 
