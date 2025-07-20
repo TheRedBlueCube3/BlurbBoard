@@ -139,7 +139,7 @@ app.post("/api/users/register", enforceCooldown, async (req, res) => {
   } catch (err) {
     await pool.query("ROLLBACK");
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -175,7 +175,7 @@ app.post("/api/users/login", enforceCooldown, async (req, res) => {
     res.json({ token, username: user.username });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -257,7 +257,7 @@ app.get("/api/msgs", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -267,8 +267,13 @@ app.post(
   authenticateToken,
   sanitizeContent,
   async (req, res) => {
+    if (!req.body) {
+      return res.status(400).json({ error: "missing request body" });
+    }
     const { content, parentId } = req.body;
     const userId = req.user.id;
+    if (!content)
+      return res.status(400).json({ error: "missing content field" });
 
     if (content.length > 500) {
       return res.status(400).json({
@@ -290,6 +295,16 @@ app.post(
       }
       const timestamp = new Date().toISOString();
 
+      if (parentId) {
+        let parentIdCheck = await pool.query(
+          "SELECT * FROM messages WHERE parent_id = $1",
+          parentId
+        );
+        if (parentIdCheck.rowCount <= 0) {
+          return res.status(400).json({ error: "parent id is nonexistent" });
+        }
+      }
+
       await pool.query(
         "INSERT INTO messages (id, content, timestamp, author, parent_id) VALUES ($1, $2, $3, $4, $5)",
         [msgId, content, timestamp, userId, parentId]
@@ -308,7 +323,7 @@ app.post(
       });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: err.message });
     }
   }
 );
@@ -340,7 +355,7 @@ app.get("/api/users/:id", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: err.message });
   }
 });
 

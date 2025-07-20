@@ -83,6 +83,12 @@ wss.on("connection", (ws, req) => {
     console.log(`Received pong from client ${ip}`);
   });
   let user = null;
+  ws.send(
+    JSON.stringify({
+      t: "ucu",
+      count: clients.size,
+    })
+  );
 
   ws.on("message", async (message) => {
     try {
@@ -91,12 +97,12 @@ wss.on("connection", (ws, req) => {
       if (data.t === "hi") {
         try {
           if (!data.token) {
-            throw new Error("Token is required");
+            throw new Error("token is required");
           }
 
           user = authenticateToken(data.token);
           if (!user) {
-            throw new Error("Invalid token");
+            throw new Error("invalid token");
           }
 
           clients.set(ws, user);
@@ -129,26 +135,48 @@ wss.on("connection", (ws, req) => {
       } else if (data.t === "post") {
         try {
           if (!user) {
-            throw new Error("Not authenticated");
+            throw new Error("not authenticated");
           }
 
           enforceCooldown(ip);
 
           if (!data.message || !data.message.content) {
-            throw new Error("Message content is required");
+            throw new Error("message content is required");
           }
 
           const { content, parentId } = data.message;
 
           if (content.length > 500) {
             throw new Error(
-              "Your message is too long, the maximum is 500 characters"
+              "your message is too long, the maximum is 500 characters"
             );
           }
 
+          let msgId = generateRandomId();
+
+          const idCheck = await pool.query(
+            "SELECT * FROM messages WHERE id = $1",
+            [msgId]
+          );
+          while (idCheck.rows.length > 0) {
+            msgId = generateRandomId();
+            idCheck = await pool.query("SELECT * FROM users WHERE id = $1", [
+              [msgId],
+            ]);
+          }
+
           const sanitizedContent = sanitizeContent(content);
-          const msgId = generateRandomId();
           const timestamp = new Date().toISOString();
+
+          if (parentId) {
+            const parentIdCheck = await pool.query(
+              "SELECT * FROM messages WHERE id = $1",
+              [parentId]
+            );
+            if (parentIdCheck.rowCount <= 0) {
+              throw new Error("parent id is nonexistent");
+            }
+          }
 
           await pool.query(
             "INSERT INTO messages (id, content, timestamp, author, parent_id) VALUES ($1, $2, $3, $4, $5)",
@@ -161,7 +189,7 @@ wss.on("connection", (ws, req) => {
           );
 
           if (userResult.rows.length === 0) {
-            throw new Error("User not found");
+            throw new Error("user not found");
           }
 
           const authorName = userResult.rows[0].username;
@@ -207,7 +235,7 @@ wss.on("connection", (ws, req) => {
       ws.send(
         JSON.stringify({
           t: "error",
-          error: "Invalid message format",
+          error: "invalid message format",
         })
       );
     }
